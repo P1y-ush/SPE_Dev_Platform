@@ -68,7 +68,7 @@ spec:
       containers:
       - name: backend
         image: p1yush123/spe-backend:latest
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 5002
         env:

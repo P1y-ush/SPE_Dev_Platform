@@ -89,7 +89,7 @@ pipeline {
                 
                 # Build and push Backend
                 echo "--- Building and Pushing Backend ---"
-                docker build -t "p1yush123/spe-backend:latest" "backend"
+                docker build -t "p1yush123/spe-backend:latest" -f "backend/Dockerfile" .
                 docker push "p1yush123/spe-backend:latest"
                 '''
             }

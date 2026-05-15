@@ -21,6 +21,7 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Global HPA Cache for instant dashboard loads
 HPA_CACHE = {} 
+NAMESPACE = "dev-platform"
 
 # Ensure kubectl can find the config even when run via sudo/Jenkins
 os.environ["HOME"] = os.path.expanduser("~") # Fixed hardcoded path
@@ -133,16 +134,13 @@ def log_to_es_async(index_name, doc):
             logging.error(f"Logstash logging failed: {e}")
     threading.Thread(target=task, daemon=True).start()
 
-
-NAMESPACE = "dev-platform"
-
 # ---------------- MONGODB ----------------
 import os
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-client = MongoClient(MONGO_URI)
+mongo_client = MongoClient(MONGO_URI)
 
-db = client["dev_platform"]
+db = mongo_client["dev_platform"]
 users_col = db["users"]
 envs_col = db["environments"]
 
@@ -413,7 +411,7 @@ def create_env():
         env_name = f"{user}-{stack}-{env_id}"
 
         base_path = os.path.dirname(os.path.abspath(__file__))
-        k8s_path = os.path.join(base_path, "..", "k8s")
+        k8s_path = os.getenv("K8S_TEMPLATES_DIR", os.path.join(base_path, "..", "k8s"))
 
         service_name = f"{env_name}-svc"
         node_port = 30000 + int(env_id[:3], 16) % 2000

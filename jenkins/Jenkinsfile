@@ -147,10 +147,7 @@ pipeline {
         stage('Build & Push All Images') {
             steps {
                 sh '''
-                # SECURE STORAGE: Direct Container Access with Auto-Seeding
-                echo "🔑 Ensuring Vault is seeded..."
-                sudo docker exec -e VAULT_TOKEN=root vault vault kv put secret/docker-hub password=<YOUR_DOCKERHUB_PASSWORD> || true
-                
+                # SECURE STORAGE: Fetching from Vault
                 echo "🔑 Fetching Docker Hub credentials..."
                 DOCKER_PW=$(sudo docker exec -e VAULT_TOKEN=root vault vault kv get -field=password secret/docker-hub)
                 

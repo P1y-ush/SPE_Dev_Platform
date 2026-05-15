@@ -1,0 +1,8 @@
+Flask
+flask-cors
+pymongo
+kubernetes
+requests
+pytest
+elasticsearch
+bcrypt

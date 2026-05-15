@@ -1,0 +1,8 @@
+- name: Install dependencies
+  apt:
+    name:
+      - curl
+      - gnupg
+      - ca-certificates
+    state: present
+    update_cache: yes

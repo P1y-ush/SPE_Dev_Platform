@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ENV_NAME}}
+  namespace: dev-platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ENV_NAME}}
+  template:
+    metadata:
+      labels:
+        app: {{ENV_NAME}}
+    spec:
+      containers:
+      - name: app-container
+        image: {{IMAGE}}
+        imagePullPolicy: Always
+        ports:
+        - containerPort: {{PORT}}
+        resources:
+          requests:
+            memory: "{{MEMORY}}"
+            cpu: "{{CPU}}"
+          limits:
+            memory: "{{MEMORY}}"
+            cpu: "{{CPU}}"
+        volumeMounts:
+        - mountPath: /data
+          name: storage
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: {{ENV_NAME}}-pvc

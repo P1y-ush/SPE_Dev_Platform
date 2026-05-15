@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-platform-config
+  namespace: dev-platform
+data:
+  # General configuration that is safe to store in plain text
+  ELASTICSEARCH_URI: "http://elasticsearch:9200"
+  NAMESPACE: "dev-platform"
+  APP_PORT: "5001"

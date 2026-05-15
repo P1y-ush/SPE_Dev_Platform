@@ -1,0 +1,13 @@
+- name: Install Docker (safe)
+  shell: |
+    if ! command -v docker > /dev/null
+    then
+      apt-get update
+      apt-get install -y docker.io
+    fi
+
+- name: Start Docker
+  service:
+    name: docker
+    state: started
+    enabled: yes

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Intelligent Platform</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --secondary: #ec4899;
+            --bg-gradient-1: #0f172a;
+            --bg-gradient-2: #1e1b4b;
+            --glass-bg: rgba(30, 41, 59, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, var(--bg-gradient-1), var(--bg-gradient-2));
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Dynamic Animated Background Blobs */
+        body::before, body::after {
+            content: "";
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(100px);
+            z-index: -1;
+            opacity: 0.4;
+            animation: pulse 10s infinite alternate;
+        }
+        body::before {
+            width: 400px; height: 400px;
+            background: #4338ca;
+            top: -10%; left: -10%;
+        }
+        body::after {
+            width: 500px; height: 500px;
+            background: #be185d;
+            bottom: -15%; right: -15%;
+            animation-direction: alternate-reverse;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.2); }
+        }
+
+        .box {
+            background: var(--glass-bg);
+            padding: 40px;
+            border-radius: 20px;
+            width: 340px;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(15px);
+            text-align: center;
+            animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(40px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 30px;
+            font-size: 26px;
+            font-weight: 700;
+            background: linear-gradient(90deg, #818cf8, #f472b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        input {
+            width: calc(100% - 30px);
+            padding: 14px 15px;
+            margin: 10px 0;
+            border-radius: 12px;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--glass-border);
+            color: white;
+            font-size: 15px;
+            outline: none;
+            transition: 0.3s;
+            font-family: 'Inter', sans-serif;
+        }
+
+        input::placeholder { color: #94a3b8; }
+        input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            color: white;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 15px;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.3s ease;
+        }
+
+        button:active { transform: scale(0.96); }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .login {
+            background: var(--primary);
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        }
+        .login:hover:not(:disabled) { background: var(--primary-hover); }
+
+        .signup {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #e2e8f0;
+        }
+        .signup:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+
+        .msg-box {
+            margin-top: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            min-height: 20px;
+            transition: 0.3s;
+        }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <h2>🚀 Welcome Back</h2>
+
+    <input type="text" id="username" placeholder="Username" autocomplete="off">
+    <input type="password" id="password" placeholder="Password">
+
+    <div class="btn-group">
+        <button class="login" id="loginBtn" onclick="login()">Login to Dashboard</button>
+        <button class="signup" id="signupBtn" onclick="signup()">Create Account</button>
+    </div>
+
+    <div class="msg-box" id="msg"></div>
+</div>
+
+<script>
+const API = "http://localhost:5002";
+
+function setLoading(isLoading) {
+    const loginBtn = document.getElementById("loginBtn");
+    const signupBtn = document.getElementById("signupBtn");
+
+    loginBtn.disabled = isLoading;
+    signupBtn.disabled = isLoading;
+
+    if (isLoading) {
+        loginBtn.innerText = "Authenticating...";
+        signupBtn.innerText = "Please wait...";
+    } else {
+        loginBtn.innerText = "Login to Dashboard";
+        signupBtn.innerText = "Create Account";
+    }
+}
+
+function showMsg(text, color="#ef4444") {
+    const msg = document.getElementById("msg");
+    msg.style.color = color;
+    msg.innerText = text;
+}
+
+function login() {
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+
+    if(!username || !password) return showMsg("⚠️ Please fill in all fields", "#facc15");
+
+    setLoading(true);
+    showMsg("");
+
+    fetch(API + "/login", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({username, password})
+    })
+    .then(res => res.json())
+    .then(data => {
+        setLoading(false);
+
+        if(data.status) {
+            showMsg("✅ Login successful! Routing...", "#10b981");
+            localStorage.setItem("user", username);
+            setTimeout(() => { window.location.href = "launchpad.html"; }, 800);
+        } else {
+            showMsg(data.error || "❌ Invalid credentials.", "#ef4444");
+        }
+    })
+    .catch(() => {
+        setLoading(false);
+        showMsg("🔥 Critical Error: Backend unreachable.", "#ef4444");
+    });
+}
+
+function signup() {
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+
+    if(!username || !password) return showMsg("⚠️ Please fill in all fields", "#facc15");
+
+    setLoading(true);
+    showMsg("");
+
+    fetch(API + "/signup", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({username, password})
+    })
+    .then(res => res.json())
+    .then(data => {
+        setLoading(false);
+
+        if(data.status) {
+            showMsg("🎉 Account created! You may now login.", "#10b981");
+        } else {
+            showMsg(data.error || "❌ User already exists.", "#ef4444");
+        }
+    })
+    .catch(() => {
+        setLoading(false);
+        showMsg("🔥 Critical Error: Backend unreachable.", "#ef4444");
+    });
+}
+</script>
+</body>
+</html>

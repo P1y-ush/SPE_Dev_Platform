@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -30,7 +31,8 @@
         }
 
         /* Dynamic Animated Background Blobs */
-        body::before, body::after {
+        body::before,
+        body::after {
             content: "";
             position: absolute;
             border-radius: 50%;
@@ -39,21 +41,32 @@
             opacity: 0.4;
             animation: pulse 10s infinite alternate;
         }
+
         body::before {
-            width: 400px; height: 400px;
+            width: 400px;
+            height: 400px;
             background: #4338ca;
-            top: -10%; left: -10%;
+            top: -10%;
+            left: -10%;
         }
+
         body::after {
-            width: 500px; height: 500px;
+            width: 500px;
+            height: 500px;
             background: #be185d;
-            bottom: -15%; right: -15%;
+            bottom: -15%;
+            right: -15%;
             animation-direction: alternate-reverse;
         }
 
         @keyframes pulse {
-            0% { transform: scale(1); }
-            100% { transform: scale(1.2); }
+            0% {
+                transform: scale(1);
+            }
+
+            100% {
+                transform: scale(1.2);
+            }
         }
 
         .box {
@@ -61,7 +74,7 @@
             padding: 40px;
             border-radius: 20px;
             width: 340px;
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
             border: 1px solid var(--glass-border);
             backdrop-filter: blur(15px);
             text-align: center;
@@ -69,8 +82,15 @@
         }
 
         @keyframes slideUp {
-            from { opacity: 0; transform: translateY(40px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         h2 {
@@ -97,8 +117,14 @@
             font-family: 'Inter', sans-serif;
         }
 
-        input::placeholder { color: #94a3b8; }
-        input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); }
+        input::placeholder {
+            color: #94a3b8;
+        }
+
+        input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+        }
 
         .btn-group {
             display: flex;
@@ -120,21 +146,33 @@
             transition: all 0.3s ease;
         }
 
-        button:active { transform: scale(0.96); }
-        button:disabled { opacity: 0.6; cursor: not-allowed; }
+        button:active {
+            transform: scale(0.96);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
 
         .login {
             background: var(--primary);
             box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
         }
-        .login:hover:not(:disabled) { background: var(--primary-hover); }
+
+        .login:hover:not(:disabled) {
+            background: var(--primary-hover);
+        }
 
         .signup {
             background: transparent;
             border: 1px solid rgba(255, 255, 255, 0.2);
             color: #e2e8f0;
         }
-        .signup:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+
+        .signup:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.1);
+        }
 
         .msg-box {
             margin-top: 20px;
@@ -145,108 +183,110 @@
         }
     </style>
 </head>
+
 <body>
 
-<div class="box">
-    <h2>🚀 Welcome Back</h2>
+    <div class="box">
+        <h2>🚀 Welcome Back</h2>
 
-    <input type="text" id="username" placeholder="Username" autocomplete="off">
-    <input type="password" id="password" placeholder="Password">
+        <input type="text" id="username" placeholder="Username" autocomplete="off">
+        <input type="password" id="password" placeholder="Password">
 
-    <div class="btn-group">
-        <button class="login" id="loginBtn" onclick="login()">Login to Dashboard</button>
-        <button class="signup" id="signupBtn" onclick="signup()">Create Account</button>
+        <div class="btn-group">
+            <button class="login" id="loginBtn" onclick="login()">Login to Dashboard</button>
+            <button class="signup" id="signupBtn" onclick="signup()">Create Account</button>
+        </div>
+
+        <div class="msg-box" id="msg"></div>
     </div>
 
-    <div class="msg-box" id="msg"></div>
-</div>
+    <script>
+        const API = "http://localhost:5002";
 
-<script>
-const API = "http://localhost:5002";
+        function setLoading(isLoading) {
+            const loginBtn = document.getElementById("loginBtn");
+            const signupBtn = document.getElementById("signupBtn");
 
-function setLoading(isLoading) {
-    const loginBtn = document.getElementById("loginBtn");
-    const signupBtn = document.getElementById("signupBtn");
+            loginBtn.disabled = isLoading;
+            signupBtn.disabled = isLoading;
 
-    loginBtn.disabled = isLoading;
-    signupBtn.disabled = isLoading;
-
-    if (isLoading) {
-        loginBtn.innerText = "Authenticating...";
-        signupBtn.innerText = "Please wait...";
-    } else {
-        loginBtn.innerText = "Login to Dashboard";
-        signupBtn.innerText = "Create Account";
-    }
-}
-
-function showMsg(text, color="#ef4444") {
-    const msg = document.getElementById("msg");
-    msg.style.color = color;
-    msg.innerText = text;
-}
-
-function login() {
-    const username = document.getElementById("username").value;
-    const password = document.getElementById("password").value;
-
-    if(!username || !password) return showMsg("⚠️ Please fill in all fields", "#facc15");
-
-    setLoading(true);
-    showMsg("");
-
-    fetch(API + "/login", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({username, password})
-    })
-    .then(res => res.json())
-    .then(data => {
-        setLoading(false);
-
-        if(data.status) {
-            showMsg("✅ Login successful! Routing...", "#10b981");
-            localStorage.setItem("user", username);
-            setTimeout(() => { window.location.href = "launchpad.html"; }, 800);
-        } else {
-            showMsg(data.error || "❌ Invalid credentials.", "#ef4444");
+            if (isLoading) {
+                loginBtn.innerText = "Authenticating...";
+                signupBtn.innerText = "Please wait...";
+            } else {
+                loginBtn.innerText = "Login to Dashboard";
+                signupBtn.innerText = "Create Account";
+            }
         }
-    })
-    .catch(() => {
-        setLoading(false);
-        showMsg("🔥 Critical Error: Backend unreachable.", "#ef4444");
-    });
-}
 
-function signup() {
-    const username = document.getElementById("username").value;
-    const password = document.getElementById("password").value;
-
-    if(!username || !password) return showMsg("⚠️ Please fill in all fields", "#facc15");
-
-    setLoading(true);
-    showMsg("");
-
-    fetch(API + "/signup", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({username, password})
-    })
-    .then(res => res.json())
-    .then(data => {
-        setLoading(false);
-
-        if(data.status) {
-            showMsg("🎉 Account created! You may now login.", "#10b981");
-        } else {
-            showMsg(data.error || "❌ User already exists.", "#ef4444");
+        function showMsg(text, color = "#ef4444") {
+            const msg = document.getElementById("msg");
+            msg.style.color = color;
+            msg.innerText = text;
         }
-    })
-    .catch(() => {
-        setLoading(false);
-        showMsg("🔥 Critical Error: Backend unreachable.", "#ef4444");
-    });
-}
-</script>
+
+        function login() {
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+
+            if (!username || !password) return showMsg("⚠️ Please fill in all fields", "#facc15");
+
+            setLoading(true);
+            showMsg("");
+
+            fetch(API + "/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    setLoading(false);
+
+                    if (data.status) {
+                        showMsg(" Login successful! Routing...", "#10b981");
+                        localStorage.setItem("user", username);
+                        setTimeout(() => { window.location.href = "launchpad.html"; }, 800);
+                    } else {
+                        showMsg(data.error || " Invalid credentials.", "#ef4444");
+                    }
+                })
+                .catch(() => {
+                    setLoading(false);
+                    showMsg(" Critical Error: Backend unreachable.", "#ef4444");
+                });
+        }
+
+        function signup() {
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+
+            if (!username || !password) return showMsg("⚠️ Please fill in all fields", "#facc15");
+
+            setLoading(true);
+            showMsg("");
+
+            fetch(API + "/signup", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    setLoading(false);
+
+                    if (data.status) {
+                        showMsg("Account created! You may now login.", "#10b981");
+                    } else {
+                        showMsg(data.error || "❌ User already exists.", "#ef4444");
+                    }
+                })
+                .catch(() => {
+                    setLoading(false);
+                    showMsg("Critical Error: Backend unreachable.", "#ef4444");
+                });
+        }
+    </script>
 </body>
+
 </html>

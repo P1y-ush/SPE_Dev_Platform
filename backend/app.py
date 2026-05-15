@@ -28,27 +28,41 @@ if "/snap/bin" not in os.environ.get("PATH", ""):
     os.environ["PATH"] += ":/snap/bin"
 
 try:
-    config.load_kube_config()
-    print("Kubernetes config loaded ✅")
-except Exception as e:
-    print(f"Error loading kube config: {e}")
+    config.load_incluster_config()
+    print("In-cluster Kubernetes config loaded ✅")
+except:
+    try:
+        config.load_kube_config()
+        print("Local Kubernetes config loaded ✅")
+    except Exception as e:
+        print(f"Error loading kube config: {e}")
 
-# Discover Minikube IP in background to avoid blocking main thread
 MINIKUBE_IP = "127.0.0.1"
 def discover_minikube_ip():
     global MINIKUBE_IP
-    while True:
+    try:
+        core_v1 = client.CoreV1Api()
+        nodes = core_v1.list_node()
+        for address in nodes.items[0].status.addresses:
+            if address.type == "InternalIP":
+                MINIKUBE_IP = address.address
+                print(f"Node IP discovered via API: {MINIKUBE_IP} ✅")
+                return
+    except Exception as e:
+        print(f"Failed to discover Node IP via API: {e}")
         try:
             ip = subprocess.check_output(["minikube", "ip"], text=True).strip()
-            if ip and ip != MINIKUBE_IP:
+            if ip:
                 MINIKUBE_IP = ip
-                print(f"Minikube IP discovered: {MINIKUBE_IP} ✅")
-                break
+                print(f"Minikube IP discovered via CLI fallback: {MINIKUBE_IP} ✅")
         except:
-            time.sleep(5)
+            pass
 
 if not os.environ.get("TESTING"):
-    threading.Thread(target=discover_minikube_ip, daemon=True).start()
+    def delayed_discovery():
+        time.sleep(2)
+        discover_minikube_ip()
+    threading.Thread(target=delayed_discovery, daemon=True).start()
 
 # ---------------- CONFIG ----------------
 STACK_CONFIG = {

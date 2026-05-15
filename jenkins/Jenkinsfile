@@ -2,9 +2,7 @@ pipeline {
     agent any
 
     environment {
-        STACK = "flask"
         USER = "test"
-        IMAGE_NAME = "p1yush123/${STACK}-env"
     }
 
     stages {
@@ -22,56 +20,6 @@ pipeline {
             }
         }
  
-        //  ANSIBLE (SAFE VERSION)
-        stage('Setup Infra (Ansible)') {
-            steps {
-                sh '''
-                echo "Running Ansible setup..."
-
-                # ensure docker running
-                sudo systemctl start docker || true
-                sudo chmod 666 /var/run/docker.sock || true
-
-                # run ansible but don't fail pipeline
-                ansible-playbook ansible/setup.yml || true
-                '''
-            }
-        }
-
-        //  FIXED PYTHON ENV (NO PIP BUG)
-        stage('Setup Backend Environment') {
-            steps {
-                dir('backend') {
-                    sh '''
-                    python3 -m venv venv
-
-                    # REMOVE BROKEN PIP COMPLETELY
-                    rm -rf venv/lib/python3.12/site-packages/pip*
-
-                    # REINSTALL CLEAN PIP
-                    curl -sS https://bootstrap.pypa.io/get-pip.py | venv/bin/python
-
-                    # INSTALL REQUIREMENTS
-                    venv/bin/pip install -r requirements.txt
-                    '''
-                }
-            }
-        }
-        stage('Run Unit Tests') {
-            steps {
-                dir('backend') {
-                    sh '''
-                    # Install pytest if not present
-                    ./venv/bin/pip install pytest
-                    
-                    # Run the professional test suite
-                    echo "🧪 Running Python Unit Tests..."
-                    ./venv/bin/python -m pytest tests/test_api.py -v
-                    '''
-                }
-            }
-        }
-
         stage('Start ELK Monitoring') {
             steps {
                 sh '''
@@ -114,33 +62,7 @@ pipeline {
 
                     sleep 3
                 done
-
-                sudo -u piyush pkill -f "kubectl port-forward" || true
-
-                sudo -u piyush JENKINS_NODE_COOKIE=dontKillMe bash -c "nohup kubectl port-forward svc/mongo-svc 27017:27017 -n dev-platform > /tmp/mongo.log 2>&1 &"
-                sleep 5
                 '''
-            }
-        }
-
-        stage('Start & Test Backend') {
-            steps {
-                dir('backend') {
-                    sh '''
-                    if sudo lsof -Pi :5002 -sTCP:LISTEN -t > /dev/null ; then
-                        sudo fuser -k 5002/tcp || true
-                        sleep 2
-                    fi
-                    
-                    sudo -E -u piyush bash -c "nohup ./venv/bin/python app.py > /tmp/backend.log 2>&1 &"
-                    
-                    echo "⌛ Waiting 15s for backend stabilization..."
-                    sleep 15
-                    
-                    # Core health check: verifies the app is alive and responding
-                    curl -s -v http://localhost:5002/ || exit 1
-                    '''
-                }
             }
         }
 
@@ -148,7 +70,7 @@ pipeline {
             steps {
                 sh '''
                 # SECURE STORAGE: Fetching from Vault
-                echo " Fetching Docker Hub credentials..."
+                echo "Fetching Docker Hub credentials..."
                 DOCKER_PW=$(sudo docker exec -e VAULT_TOKEN=root vault vault kv get -field=password secret/docker-hub)
                 
                 if [ -z "$DOCKER_PW" ]; then
@@ -164,11 +86,16 @@ pipeline {
                     docker build -t "p1yush123/${stack}-env:latest" "templates/${stack}"
                     docker push "p1yush123/${stack}-env:latest"
                 done
+                
+                # Build and push Backend
+                echo "--- Building and Pushing Backend ---"
+                docker build -t "p1yush123/spe-backend:latest" "backend"
+                docker push "p1yush123/spe-backend:latest"
                 '''
             }
         }
 
-        stage('Security Scan (Trivy)') {//
+        stage('Security Scan (Trivy)') {
             steps {
                 sh '''
                 echo "--- Initiating Security Audit (Trivy) ---"
@@ -176,18 +103,33 @@ pipeline {
                     echo "Scanning Image: p1yush123/${stack}-env:latest"
                     trivy image --severity HIGH,CRITICAL --no-progress "p1yush123/${stack}-env:latest" || true
                 done
+                
+                echo "Scanning Backend Image..."
+                trivy image --severity HIGH,CRITICAL --no-progress "p1yush123/spe-backend:latest" || true
                 '''
             }
         }
 
-
-        stage('Deploy') {
+        stage('Deploy Backend') {
             steps {
                 sh '''
-                echo " Deploying Dashboard Environment..."
-                curl -X POST http://localhost:5002/create-env \
-                -H "Content-Type: application/json" \
-                -d '{"stack":"flask","user":"prod_user","image":"p1yush123/flask-env:latest"}'
+                echo "Deploying Backend to Kubernetes..."
+                sudo -u piyush bash -ec "
+                    kubectl apply -f k8s/backend.yaml
+                    kubectl rollout restart deployment backend -n dev-platform
+                "
+                
+                echo "Waiting for backend pod to be ready..."
+                for i in {1..30}
+                do
+                    status=$(sudo -u piyush kubectl get pods -n dev-platform -l app=backend -o jsonpath="{.items[0].status.phase}" 2>/dev/null || echo "NotReady")
+                    if [ "$status" = "Running" ]
+                    then
+                        echo "Backend ready"
+                        break
+                    fi
+                    sleep 3
+                done
                 '''
             }
         }

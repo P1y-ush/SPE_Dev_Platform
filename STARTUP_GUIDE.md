@@ -39,26 +39,22 @@ docker-compose up -d
 
 ## Phase 2: Platform Deployment
 
-### Step 3: Database & Networking
-Deploy MongoDB to K8s and establish a secure bridge for the backend.
+### Step 3: Deploy Application Infrastructure
+Deploy MongoDB and the Backend API to Kubernetes.
 ```bash
 # Apply K8s manifests
 kubectl apply -f k8s/config.yml
 kubectl apply -f k8s/secrets.yml
 kubectl apply -f k8s/mongo.yaml
-
-# Establish Port-Forward (Keep this terminal open)
-kubectl port-forward svc/mongo-svc 27017:27017 -n dev-platform
+kubectl apply -f k8s/backend.yaml
 ```
 
-### Step 4: Launch the Backend
-Open a **new terminal**, navigate to the `backend` directory, and start the server.
+### Step 4: Expose the Backend
+Since the backend runs securely inside the cluster, you must expose it locally for the frontend to connect. Open a **new terminal** and run:
 ```bash
-cd backend
-source venv/bin/activate
-python app.py
+kubectl port-forward svc/backend-svc 5002:5002 -n dev-platform
 ```
-**Verification**: Look for `Elasticsearch connected ✅` and `Minikube IP discovered ✅` in the logs.
+*(Keep this terminal open!)*
 
 ### Step 5: Launch the Frontend
 Open another terminal and serve the UI.

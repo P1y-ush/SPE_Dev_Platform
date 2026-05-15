@@ -22,7 +22,7 @@ pipeline {
             }
         }
  
-        // ✅ ANSIBLE (SAFE VERSION)
+        //  ANSIBLE (SAFE VERSION)
         stage('Setup Infra (Ansible)') {
             steps {
                 sh '''
@@ -38,7 +38,7 @@ pipeline {
             }
         }
 
-        // ✅ FIXED PYTHON ENV (NO PIP BUG)
+        //  FIXED PYTHON ENV (NO PIP BUG)
         stage('Setup Backend Environment') {
             steps {
                 dir('backend') {
@@ -148,14 +148,14 @@ pipeline {
             steps {
                 sh '''
                 # SECURE STORAGE: Fetching from Vault
-                echo "🔑 Fetching Docker Hub credentials..."
+                echo " Fetching Docker Hub credentials..."
                 DOCKER_PW=$(sudo docker exec -e VAULT_TOKEN=root vault vault kv get -field=password secret/docker-hub)
                 
                 if [ -z "$DOCKER_PW" ]; then
-                    echo "❌ Failed to fetch password from Vault container!"
+                    echo "Failed to fetch password from Vault container!"
                     exit 1
                 fi
-                echo "✅ Credentials retrieved successfully."
+                echo "Credentials retrieved successfully."
                 echo "$DOCKER_PW" | docker login -u p1yush123 --password-stdin
                 
                 # Portable loop for all 4 stacks
@@ -184,7 +184,7 @@ pipeline {
         stage('Deploy') {
             steps {
                 sh '''
-                echo "🚀 Deploying Dashboard Environment..."
+                echo " Deploying Dashboard Environment..."
                 curl -X POST http://localhost:5002/create-env \
                 -H "Content-Type: application/json" \
                 -d '{"stack":"flask","user":"prod_user","image":"p1yush123/flask-env:latest"}'

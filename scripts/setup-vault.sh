@@ -16,7 +16,7 @@ fi
 
 # Ensure vault is running
 if ! docker ps | grep vault > /dev/null; then
-    echo "⏳ Starting Vault container..."
+    echo " Starting Vault container..."
     docker-compose up -d vault
     sleep 3
 fi

@@ -12,58 +12,34 @@ import logging
 from elasticsearch import Elasticsearch
 import bcrypt
 import requests
-from kubernetes import client, config, utils
-import yaml
-import concurrent.futures
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Global HPA Cache for instant dashboard loads
 HPA_CACHE = {} 
-NAMESPACE = "dev-platform"
 
 # Ensure kubectl can find the config even when run via sudo/Jenkins
-os.environ["HOME"] = os.path.expanduser("~") # Fixed hardcoded path
+os.environ["HOME"] = "/home/piyush"
 if "/snap/bin" not in os.environ.get("PATH", ""):
     os.environ["PATH"] += ":/snap/bin"
 
-try:
-    config.load_incluster_config()
-    print("In-cluster Kubernetes config loaded ✅")
-except:
-    try:
-        config.load_kube_config()
-        print("Local Kubernetes config loaded ✅")
-    except Exception as e:
-        print(f"Error loading kube config: {e}")
-
+# Discover Minikube IP in background to avoid blocking main thread
 MINIKUBE_IP = "127.0.0.1"
 def discover_minikube_ip():
     global MINIKUBE_IP
-    try:
-        core_v1 = client.CoreV1Api()
-        nodes = core_v1.list_node()
-        for address in nodes.items[0].status.addresses:
-            if address.type == "InternalIP":
-                MINIKUBE_IP = address.address
-                print(f"Node IP discovered via API: {MINIKUBE_IP} ✅")
-                return
-    except Exception as e:
-        print(f"Failed to discover Node IP via API: {e}")
+    while True:
         try:
             ip = subprocess.check_output(["minikube", "ip"], text=True).strip()
-            if ip:
+            if ip and ip != MINIKUBE_IP:
                 MINIKUBE_IP = ip
-                print(f"Minikube IP discovered via CLI fallback: {MINIKUBE_IP} ✅")
+                print(f"Minikube IP discovered: {MINIKUBE_IP} ✅")
+                break
         except:
-            pass
+            time.sleep(5)
 
 if not os.environ.get("TESTING"):
-    def delayed_discovery():
-        time.sleep(2)
-        discover_minikube_ip()
-    threading.Thread(target=delayed_discovery, daemon=True).start()
+    threading.Thread(target=discover_minikube_ip, daemon=True).start()
 
 # ---------------- CONFIG ----------------
 STACK_CONFIG = {
@@ -76,19 +52,22 @@ STACK_CONFIG = {
 # ---------------- BACKGROUND SYNC ----------------
 def sync_hpa_background():
     global HPA_CACHE
-    autoscaling_v1 = client.AutoscalingV1Api()
     while True:
         try:
-            hpas = autoscaling_v1.list_namespaced_horizontal_pod_autoscaler(namespace=NAMESPACE)
+            hpa_out = subprocess.check_output(
+                ["kubectl", "get", "hpa", "-n", NAMESPACE, "--no-headers"],
+                text=True, stderr=subprocess.DEVNULL
+            ).strip().split("\n")
+            
             new_cache = {}
-            for hpa in hpas.items:
-                hpa_name = hpa.metadata.name.rsplit("-", 1)[0]
-                current = hpa.status.current_replicas or 0
-                desired = hpa.spec.max_replicas or 3
-                new_cache[hpa_name] = f"{current}/{desired}"
+            for line in hpa_out:
+                parts = line.split()
+                if len(parts) >= 7:
+                    hpa_name = parts[0].rsplit("-", 1)[0]
+                    new_cache[hpa_name] = f"{parts[6]}/{parts[5]}"
             HPA_CACHE = new_cache
-        except Exception as e:
-            logging.error(f"HPA sync error: {e}")
+        except:
+            pass
         time.sleep(10)
 
 threading.Thread(target=sync_hpa_background, daemon=True).start()
@@ -134,13 +113,16 @@ def log_to_es_async(index_name, doc):
             logging.error(f"Logstash logging failed: {e}")
     threading.Thread(target=task, daemon=True).start()
 
+
+NAMESPACE = "dev-platform"
+
 # ---------------- MONGODB ----------------
 import os
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-mongo_client = MongoClient(MONGO_URI)
+client = MongoClient(MONGO_URI)
 
-db = mongo_client["dev_platform"]
+db = client["dev_platform"]
 users_col = db["users"]
 envs_col = db["environments"]
 
@@ -156,25 +138,22 @@ def load_yaml_template(path, replacements):
 
 
 def delete_k8s_resources(name):
-    apps_v1 = client.AppsV1Api()
-    core_v1 = client.CoreV1Api()
-    autoscaling_v1 = client.AutoscalingV1Api()
-    
-    try:
-        apps_v1.delete_namespaced_deployment(name=name, namespace=NAMESPACE)
-    except client.exceptions.ApiException: pass
-    
-    try:
-        core_v1.delete_namespaced_service(name=f"{name}-svc", namespace=NAMESPACE)
-    except client.exceptions.ApiException: pass
-    
-    try:
-        core_v1.delete_namespaced_persistent_volume_claim(name=f"{name}-pvc", namespace=NAMESPACE)
-    except client.exceptions.ApiException: pass
-    
-    try:
-        autoscaling_v1.delete_namespaced_horizontal_pod_autoscaler(name=f"{name}-hpa", namespace=NAMESPACE)
-    except client.exceptions.ApiException: pass
+    subprocess.run(
+        ["kubectl", "delete", "deployment", name, "-n", NAMESPACE, "--ignore-not-found"],
+        check=False
+    )
+    subprocess.run(
+        ["kubectl", "delete", "svc", f"{name}-svc", "-n", NAMESPACE, "--ignore-not-found"],
+        check=False
+    )
+    subprocess.run(
+        ["kubectl", "delete", "pvc", f"{name}-pvc", "-n", NAMESPACE, "--ignore-not-found"],
+        check=False
+    )
+    subprocess.run(
+        ["kubectl", "delete", "hpa", f"{name}-hpa", "-n", NAMESPACE, "--ignore-not-found"],
+        check=False
+    )
 
 
 # ---------------- TTL CLEANUP ----------------
@@ -209,10 +188,10 @@ def cleanup_expired_envs():
                     "event": "ttl_delete",
                     "env": env_name
                 })
-                print(f"✅ TTL: Successfully purged {env_name}")
+                print(f" TTL: Successfully purged {env_name}")
 
         except Exception as e:
-            print(f"❌ TTL Error: {e}")
+            print(f" TTL Error: {e}")
             logging.error(f"TTL Error: {e}")
 
 
@@ -265,41 +244,41 @@ def delete_env():
 
 @app.route('/stress-env', methods=['POST'])
 def stress_env():
-    """Trigger CPU load to demonstrate HPA scaling via external HTTP requests"""
+    """Innovation: Trigger CPU load to demonstrate HPA scaling"""
     try:
         data = request.get_json()
         env_name = data["env_name"]
         
-        env_record = envs_col.find_one({"env_name": env_name})
-        if not env_record:
-            return jsonify({"error": "Environment not found"}), 404
-            
-        env_node_port = env_record["port"]
-        target_url = f"http://{MINIKUBE_IP}:{env_node_port}/"
-
-        def generate_http_load():
-            end_time = time.time() + 120  # Run for 120 seconds
-            
-            def make_request():
-                try:
-                    requests.get(target_url, timeout=2)
-                except: pass
-                
-            with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-                while time.time() < end_time:
-                    # Submit a batch of 50 concurrent requests
-                    futures = [executor.submit(make_request) for _ in range(50)]
-                    concurrent.futures.wait(futures)
-                    
-        threading.Thread(target=generate_http_load, daemon=True).start()
+        # Get actual pod name (kubectl exec requires a pod, not a deployment)
+        pod_cmd = ["kubectl", "get", "pod", "-l", f"app={env_name}", "-o", "name", "-n", NAMESPACE]
+        pod_output = subprocess.check_output(pod_cmd, text=True).strip()
         
-        logging.info(f"STRESS TEST TRIGGERED (HTTP Load): {env_name} on {target_url}")
+        if not pod_output:
+            return jsonify({"error": "No running pod found for this environment"}), 404
+
+        # Pick the first pod if multiple are returned (e.g. during scaling or restarts)
+        pod_name = pod_output.split('\n')[0]
+
+        # Run in a background thread so the HTTP response is instant, 
+        # but the load is sustained for 60s
+        def run_load():
+            try:
+                # Increased to 120s to ensure HPA has reliable metrics window
+                stress_cmd = ["kubectl", "exec", "-n", NAMESPACE, pod_name, "--", "sh", "-c", "timeout 120s cat /dev/urandom | gzip -9 > /dev/null"]
+                subprocess.run(stress_cmd, check=True)
+            except Exception as e:
+                logging.error(f"Stress execution failed: {e}")
+
+        threading.Thread(target=run_load, daemon=True).start()
+        
+        logging.info(f"STRESS TEST TRIGGERED: {env_name} on {pod_name}")
         log_to_es_async(index_name="app-logs", doc={
-            "event": "stress_test_http",
-            "env": env_name
+            "event": "stress_test",
+            "env": env_name,
+            "pod": pod_name
         })
         
-        return jsonify({"status": "stressing", "message": f"HTTP load triggered for 120s against {target_url}"})
+        return jsonify({"status": "stressing", "message": f"CPU load triggered for 60s on {pod_name}"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -411,7 +390,7 @@ def create_env():
         env_name = f"{user}-{stack}-{env_id}"
 
         base_path = os.path.dirname(os.path.abspath(__file__))
-        k8s_path = os.getenv("K8S_TEMPLATES_DIR", os.path.join(base_path, "..", "k8s"))
+        k8s_path = os.path.join(base_path, "..", "k8s")
 
         service_name = f"{env_name}-svc"
         node_port = 30000 + int(env_id[:3], 16) % 2000
@@ -457,23 +436,26 @@ def create_env():
                     {"ENV_NAME": env_name}
                 )
 
-                api_client = client.ApiClient()
-                
-                # Apply PVC
-                for obj in yaml.safe_load_all(pvc_yaml):
-                    if obj: utils.create_from_dict(api_client, obj)
-                
-                # Apply Deployment
-                for obj in yaml.safe_load_all(deployment_yaml):
-                    if obj: utils.create_from_dict(api_client, obj)
-                    
-                # Apply Service
-                for obj in yaml.safe_load_all(service_yaml):
-                    if obj: utils.create_from_dict(api_client, obj)
-                    
-                # Apply HPA
-                for obj in yaml.safe_load_all(hpa_yaml):
-                    if obj: utils.create_from_dict(api_client, obj)
+                pvc_file = f"/tmp/pvc-{env_id}.yaml"
+                dep_file = f"/tmp/deploy-{env_id}.yaml"
+                svc_file = f"/tmp/service-{env_id}.yaml"
+                hpa_file = f"/tmp/hpa-{env_id}.yaml"
+
+                open(pvc_file, "w").write(pvc_yaml)
+                open(dep_file, "w").write(deployment_yaml)
+                open(svc_file, "w").write(service_yaml)
+                open(hpa_file, "w").write(hpa_yaml)
+
+                def run_kubectl(args):
+                    res = subprocess.run(args, capture_output=True, text=True, timeout=30)
+                    if res.returncode != 0:
+                        raise Exception(f"kubectl error: {res.stderr or res.stdout}")
+                    return res.stdout
+
+                run_kubectl(["kubectl", "apply", "-f", pvc_file])
+                run_kubectl(["kubectl", "apply", "-f", dep_file])
+                run_kubectl(["kubectl", "apply", "-f", svc_file])
+                run_kubectl(["kubectl", "apply", "-f", hpa_file])
 
                 threading.Thread(target=verify_deployment, args=(env_name,), daemon=True).start()
 
@@ -487,27 +469,32 @@ def create_env():
 
         def verify_deployment(name):
             """Wait for deployment to be ready or fail after 5 mins"""
-            apps_v1 = client.AppsV1Api()
-            core_v1 = client.CoreV1Api()
-            
             start_time = time.time()
             while time.time() - start_time < 300:
                 try:
-                    dep = apps_v1.read_namespaced_deployment(name=name, namespace=NAMESPACE)
-                    if (dep.status.ready_replicas or 0) >= 1:
+                    out = subprocess.check_output(
+                        ["kubectl", "get", "deployment", name, "-n", NAMESPACE, "-o", "json"],
+                        text=True
+                    )
+                    data = json.loads(out)
+                    ready_replicas = data.get("status", {}).get("readyReplicas", 0)
+                    if ready_replicas >= 1:
                         envs_col.update_one({"env_name": name}, {"$set": {"status": "running"}})
                         return
                     
                     # Check for image pull errors
-                    pods = core_v1.list_namespaced_pod(namespace=NAMESPACE, label_selector=f"app={name}")
-                    for pod in pods.items:
-                        if pod.status and pod.status.container_statuses:
-                            for cs in pod.status.container_statuses:
-                                if cs.state and cs.state.waiting:
-                                    reason = cs.state.waiting.reason
-                                    if reason in ["ImagePullBackOff", "ErrImagePull"]:
-                                        envs_col.update_one({"env_name": name}, {"$set": {"status": "error", "error": f"Image Error: {cs.state.waiting.message}"}})
-                                        return
+                    pod_out = subprocess.check_output(
+                        ["kubectl", "get", "pods", "-n", NAMESPACE, "-l", f"app={name}", "-o", "json"],
+                        text=True
+                    )
+                    pod_data = json.loads(pod_out)
+                    if pod_data.get("items"):
+                        container_statuses = pod_data["items"][0].get("status", {}).get("containerStatuses", [])
+                        for cs in container_statuses:
+                            waiting = cs.get("state", {}).get("waiting", {})
+                            if waiting.get("reason") in ["ImagePullBackOff", "ErrImagePull"]:
+                                envs_col.update_one({"env_name": name}, {"$set": {"status": "error", "error": f"Image Error: {waiting.get('message')}"}})
+                                return
                 except:
                     pass
                 time.sleep(5)
@@ -531,4 +518,3 @@ def create_env():
 if __name__ == '__main__':
     threading.Thread(target=cleanup_expired_envs, daemon=True).start()
     app.run(debug=True, host='0.0.0.0', port=5002)
-#comment
